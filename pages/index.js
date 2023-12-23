@@ -1,117 +1,173 @@
-import {useState, useEffect} from "react";
-import {ethers} from "ethers";
+import { useState, useEffect } from "react";
+import { ethers } from "ethers";
 import atm_abi from "../artifacts/contracts/Assessment.sol/Assessment.json";
 
+const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
 export default function HomePage() {
-  const [ethWallet, setEthWallet] = useState(undefined);
   const [account, setAccount] = useState(undefined);
-  const [atm, setATM] = useState(undefined);
-  const [balance, setBalance] = useState(undefined);
+  const [balance, setBalance] = useState(0);
+  const [inputA, setInputA] = useState(0);
+  const [inputB, setInputB] = useState(0);
+  const [notifications, setNotifications] = useState([]);
 
-  const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-  const atmABI = atm_abi.abi;
-
-  const getWallet = async() => {
+  const checkWallet = async () => {
     if (window.ethereum) {
-      setEthWallet(window.ethereum);
+      const accounts = await window.ethereum.request({ method: "eth_accounts" });
+      if (accounts.length > 0) {
+        setAccount(accounts[0]);
+      }
     }
-
-    if (ethWallet) {
-      const account = await ethWallet.request({method: "eth_accounts"});
-      handleAccount(account);
-    }
-  }
-
-  const handleAccount = (account) => {
-    if (account) {
-      console.log ("Account connected: ", account);
-      setAccount(account);
-    }
-    else {
-      console.log("No account found");
-    }
-  }
-
-  const connectAccount = async() => {
-    if (!ethWallet) {
-      alert('MetaMask wallet is required to connect');
-      return;
-    }
-  
-    const accounts = await ethWallet.request({ method: 'eth_requestAccounts' });
-    handleAccount(accounts);
-    
-    // once wallet is set we can get a reference to our deployed contract
-    getATMContract();
   };
 
-  const getATMContract = () => {
-    const provider = new ethers.providers.Web3Provider(ethWallet);
+  const getBalance = async () => {
+    const provider = new ethers.providers.JsonRpcProvider();
+    const contract = new ethers.Contract(contractAddress, atm_abi.abi, provider);
+    const currentBalance = await contract.balance();
+    setBalance(currentBalance.toNumber());
+  };
+
+  const deposit = async () => {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
     const signer = provider.getSigner();
-    const atmContract = new ethers.Contract(contractAddress, atmABI, signer);
- 
-    setATM(atmContract);
-  }
-
-  const getBalance = async() => {
-    if (atm) {
-      setBalance((await atm.getBalance()).toNumber());
-    }
-  }
-
-  const deposit = async() => {
-    if (atm) {
-      let tx = await atm.deposit(1);
-      await tx.wait()
+    const contract = new ethers.Contract(contractAddress, atm_abi.abi, signer);
+    try {
+      const transaction = await contract.deposit(inputA, { value: inputA });
+      await transaction.wait();
       getBalance();
+      notify("Deposit successful", `You deposited ${inputA} ETH.`);
+    } catch (error) {
+      notify("Deposit failed", "There was an error processing your deposit.");
     }
-  }
+  };
 
-  const withdraw = async() => {
-    if (atm) {
-      let tx = await atm.withdraw(1);
-      await tx.wait()
+  const withdraw = async () => {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const contract = new ethers.Contract(contractAddress, atm_abi.abi, signer);
+    try {
+      const transaction = await contract.withdraw(inputB);
+      await transaction.wait();
       getBalance();
+      notify("Withdrawal successful", `You withdrew ${inputB} ETH.`);
+    } catch (error) {
+      notify("Withdrawal failed", "There was an error processing your withdrawal.");
     }
-  }
+  };
 
-  const initUser = () => {
-    // Check to see if user has Metamask
-    if (!ethWallet) {
-      return <p>Please install Metamask in order to use this ATM.</p>
-    }
+  const notify = (title, message) => {
+    const newNotification = { title, message };
+    setNotifications([newNotification, ...notifications]);
+  };
 
-    // Check to see if user is connected. If not, connect to their account
-    if (!account) {
-      return <button onClick={connectAccount}>Please connect your Metamask wallet</button>
-    }
+  useEffect(() => {
+    checkWallet();
+    getBalance();
 
-    if (balance == undefined) {
-      getBalance();
-    }
+    
+    const interval = setInterval(getBalance, 5000); // Update balance every 5 seconds
 
-    return (
-      <div>
-        <p>Your Account: {account}</p>
-        <p>Your Balance: {balance}</p>
-        <button onClick={deposit}>Deposit 1 ETH</button>
-        <button onClick={withdraw}>Withdraw 1 ETH</button>
-      </div>
-    )
-  }
-
-  useEffect(() => {getWallet();}, []);
+    // Cleanup interval on component unmount
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <main className="container">
-      <header><h1>Welcome to the Metacrafters ATM!</h1></header>
-      {initUser()}
+      <header>
+        <div className="button-container">
+          <input
+            type="number"
+            placeholder="Enter ETH to deposit"
+            value={inputA}
+            onChange={(e) => setInputA(e.target.value)}
+          />
+          <button onClick={deposit}>Deposit ETH</button>
+        </div>
+
+        <div className="button-container">
+          <input
+            type="number"
+            placeholder="Enter ETH to withdraw"
+            value={inputB}
+            onChange={(e) => setInputB(e.target.value)}
+          />
+          <button onClick={withdraw}>Withdraw ETH</button>
+        </div>
+
+        <h1>Welcome Naveen </h1>
+        {account ? (
+          <div className="account-info">
+            <p>Account Holder: Naveen Kumar</p>
+            <p>Account Type: Crypto Savings</p>
+            <p>Account Opened Date: 01/01/23</p>
+            <p>Address: M G Road, Bangalore, India</p>
+            <p>Your Balance: {balance} ETH </p>
+            <p>Account Address: {account}</p>
+          </div>
+        ) : (
+          <p>Please install Metamask to use this ATM.</p>
+        )}
+      </header>
+
+      {/* Display notifications in the right-bottom corner */}
+      <div className="notifications">
+        <h3>Notifications</h3>
+        <div>
+          {notifications.map((notification, index) => (
+            <div key={index} className="notification-item">
+              <p>{notification.title}</p>
+              <p>{notification.message}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <style jsx>{`
         .container {
-          text-align: center
+          text-align: center;
+          background-color: #8e44ad; /* Purple background */
+          color: #ffffff; /* White text */
+          padding: 20px;
+          position: relative;
         }
-      `}
-      </style>
+
+        header {
+          position: relative;
+        }
+
+        .button-container {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start; /* Align buttons to the left */
+          margin: 10px;
+        }
+
+        input {
+          margin-right: 10px;
+        }
+
+        button {
+          padding: 10px;
+          border: none;
+          cursor: pointer;
+        }
+
+        /* Display notifications in the right-bottom corner */
+        .notifications {
+          position: fixed;
+          bottom: 10px;
+          right: 10px;
+          text-align: center;
+        }
+
+        .notification-item {
+          background-color: #2ecc71; /* Green background for notifications */
+          color: #ffffff; /* White text */
+          padding: 10px;
+          margin-bottom: 5px;
+          border-radius: 5px;
+        }
+      `}</style>
     </main>
-  )
+  );
 }
